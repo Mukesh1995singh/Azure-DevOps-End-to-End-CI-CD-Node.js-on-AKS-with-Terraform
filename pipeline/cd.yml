@@ -1,0 +1,129 @@
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: ci
+      source: 'NodeJS-CI'
+      trigger:
+        branches:
+          include:
+            - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  imageRepository: 'nodejs-cicd-aks'
+  containerRegistry: 'acrnodedemocicd.azurecr.io'
+  namespace: 'nodejs-app'
+
+  # Common Kubernetes manifests
+  kubernetesManifests: |
+    Kubernetes/namespace.yml
+    Kubernetes/deployment.yml
+    Kubernetes/service.yml
+    Kubernetes/ingress.yml
+    Kubernetes/hpa.yml
+
+stages:
+
+# =========================================================
+# DEV
+# =========================================================
+
+- stage: DEV
+  displayName: 'Deploy to DEV'
+
+  jobs:
+
+  - deployment: DeployDEV
+    displayName: 'Deploy Node.js to DEV'
+    environment: 'nodejs-dev'
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - checkout: self
+
+          - task: KubernetesManifest@1
+            displayName: 'Deploy to DEV AKS'
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'aks-nodejs-dev-connection'
+              namespace: '$(namespace)'
+              manifests: '$(kubernetesManifests)'
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(resources.pipeline.ci.runID)
+
+
+# =========================================================
+# TEST
+# =========================================================
+
+- stage: TEST
+  displayName: 'Deploy to TEST'
+
+  dependsOn: DEV
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: DeployTEST
+    displayName: 'Deploy Node.js to TEST'
+    environment: 'nodejs-test'
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - checkout: self
+
+          - task: KubernetesManifest@1
+            displayName: 'Deploy to TEST AKS'
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'aks-nodejs-test-connection'
+              namespace: '$(namespace)'
+              manifests: '$(kubernetesManifests)'
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(resources.pipeline.ci.runID)
+
+
+# =========================================================
+# PROD
+# =========================================================
+
+- stage: PROD
+  displayName: 'Deploy to PROD'
+
+  dependsOn: TEST
+  condition: succeeded()
+
+  jobs:
+
+  - deployment: DeployPROD
+    displayName: 'Deploy Node.js to PROD'
+    environment: 'nodejs-prod'
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - checkout: self
+
+          - task: KubernetesManifest@1
+            displayName: 'Deploy to PROD AKS'
+            inputs:
+              action: 'deploy'
+              kubernetesServiceConnection: 'aks-nodejs-prod-connection'
+              namespace: '$(namespace)'
+              manifests: '$(kubernetesManifests)'
+              containers: |
+                $(containerRegistry)/$(imageRepository):$(resources.pipeline.ci.runID)

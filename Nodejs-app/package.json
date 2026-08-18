@@ -1,0 +1,13 @@
+{
+  "name": "nodejs-aks-ingress-demo",
+  "version": "1.0.0",
+  "description": "Node.js application for AKS Ingress path routing demo",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

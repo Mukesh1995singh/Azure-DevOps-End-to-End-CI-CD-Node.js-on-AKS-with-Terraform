@@ -1,0 +1,164 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: nodejs-cicd
+  namespace: nodejs-app
+
+  labels:
+    app: nodejs-cicd
+
+spec:
+  replicas: 2
+
+  strategy:
+    type: RollingUpdate
+
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: nodejs-cicd
+
+  template:
+    metadata:
+      labels:
+        app: nodejs-cicd
+
+      annotations:
+        azure.workload.identity/use: "true"
+
+    spec:
+      # Workload Identity ServiceAccount
+      serviceAccountName: nodejs-app-sa
+
+      containers:
+        - name: nodejs-cicd
+
+          image: acrnodedemocicd.azurecr.io/nodejs-cicd-aks:latest
+
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+
+          # ==================================================
+          # Application Configuration
+          # ==================================================
+
+          env:
+            - name: PORT
+              value: "3000"
+
+            - name: APP_VERSION
+              value: "1.0.0"
+
+            - name: ENVIRONMENT
+              value: "DEV"
+
+            # ==================================================
+            # MongoDB Configuration
+            # Values come from Kubernetes Secret
+            # ==================================================
+
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: db-host
+
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: db-name
+
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: db-username
+
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secrets
+                  key: db-password
+
+          # ==================================================
+          # Key Vault CSI Volume
+          # ==================================================
+
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets
+              readOnly: true
+
+          # ==================================================
+          # Resources
+          # ==================================================
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # ==================================================
+          # Startup Probe
+          # ==================================================
+
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+
+            failureThreshold: 30
+            periodSeconds: 5
+
+          # ==================================================
+          # Readiness Probe
+          # ==================================================
+
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          # ==================================================
+          # Liveness Probe
+          # ==================================================
+
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+      # ======================================================
+      # Secrets Store CSI Driver
+      # ======================================================
+
+      volumes:
+        - name: secrets-store
+
+          csi:
+            driver: secrets-store.csi.k8s.io
+
+            readOnly: true
+
+            volumeAttributes:
+              secretProviderClass: mongodb-keyvault

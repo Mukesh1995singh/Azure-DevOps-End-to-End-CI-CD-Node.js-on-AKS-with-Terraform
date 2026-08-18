@@ -1,0 +1,50 @@
+trigger:
+  branches:
+    include:
+      - master
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  dockerRegistryServiceConnection: 'acr-connection'
+  imageRepository: 'nodejs-cicd-aks'
+  containerRegistry: 'acrnodedemocicd.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  tag: '$(Build.BuildId)'
+
+stages:
+
+- stage: CI
+  displayName: 'Build, Test and Push'
+
+  jobs:
+
+  - job: BuildAndPush
+    displayName: 'Unit Test, Build and Push Docker Image'
+
+    steps:
+
+    - task: NodeTool@0
+      displayName: 'Install Node.js'
+      inputs:
+        versionSpec: '20.x'
+
+    - script: |
+        npm ci
+      displayName: 'Install Dependencies'
+
+    - script: |
+        npm test
+      displayName: 'Run Unit Tests'
+
+    - task: Docker@2
+      displayName: 'Build and Push Docker Image'
+      inputs:
+        command: buildAndPush
+        repository: $(imageRepository)
+        dockerfile: $(dockerfilePath)
+        containerRegistry: $(dockerRegistryServiceConnection)
+        tags: |
+          $(tag)
+          latest
